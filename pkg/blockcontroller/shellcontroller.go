@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/wavetermdev/waveterm/pkg/blocklogger"
 	"github.com/wavetermdev/waveterm/pkg/filestore"
 	"github.com/wavetermdev/waveterm/pkg/panichandler"
@@ -730,6 +731,13 @@ func createCmdStrAndOpts(blockId string, blockMeta waveobj.MetaMapType, connName
 		}
 		cmdOpts.Cwd = cwdPath
 	}
+
+	// TermDash: Claude Code session management
+	tdType := blockMeta.GetString(waveobj.MetaKey_TermDashType, "")
+	if tdType == "claude" {
+		cmdStr = buildClaudeCommand(blockId, blockMeta, cmdStr)
+	}
+
 	useShell := blockMeta.GetBool(waveobj.MetaKey_CmdShell, true)
 	if !useShell {
 		if strings.Contains(cmdStr, " ") {
@@ -743,6 +751,34 @@ func createCmdStrAndOpts(blockId string, blockMeta waveobj.MetaMapType, connName
 	}
 	cmdOpts.ForceJwt = blockMeta.GetBool(waveobj.MetaKey_CmdJwt, false)
 	return cmdStr, &cmdOpts, nil
+}
+
+// buildClaudeCommand augments the "claude" command with session tracking flags.
+// For new sessions: claude --session-id <uuid>
+// For resumed sessions: claude --resume <uuid> or claude --continue
+func buildClaudeCommand(blockId string, blockMeta waveobj.MetaMapType, baseCmd string) string {
+	resume := blockMeta.GetBool(waveobj.MetaKey_TermDashResume, false)
+	sessionId := blockMeta.GetString(waveobj.MetaKey_TermDashClaudeSession, "")
+
+	if resume && sessionId != "" {
+		return baseCmd + " --resume " + sessionId
+	}
+	if resume {
+		return baseCmd + " --continue"
+	}
+	if sessionId != "" {
+		return baseCmd + " --session-id " + sessionId
+	}
+	// New session: generate a UUID and save it to block metadata
+	newId := uuid.New().String()
+	ctx, cancelFn := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancelFn()
+	blockData, err := wstore.DBMustGet[*waveobj.Block](ctx, blockId)
+	if err == nil {
+		blockData.Meta[waveobj.MetaKey_TermDashClaudeSession] = newId
+		wstore.DBUpdate(ctx, blockData)
+	}
+	return baseCmd + " --session-id " + newId
 }
 
 func (bc *ShellController) getBlockData_noErr() *waveobj.Block {

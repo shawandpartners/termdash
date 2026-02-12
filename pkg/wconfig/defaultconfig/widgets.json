@@ -10,6 +10,23 @@
             }
         }
     },
+    "defwidget@claude": {
+        "display:order": -4.5,
+        "icon": "wand-magic-sparkles",
+        "color": "#bc8cff",
+        "label": "claude",
+        "description": "Launch Claude Code session",
+        "blockdef": {
+            "meta": {
+                "view": "term",
+                "controller": "shell",
+                "cmd": "claude",
+                "termdash:type": "claude",
+                "frame:activebordercolor": "#bc8cff",
+                "frame:bordercolor": "#3d2d5c"
+            }
+        }
+    },
     "defwidget@files": {
         "display:order": -4,
         "icon": "folder",

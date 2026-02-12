@@ -1119,6 +1119,14 @@ declare global {
         "onboarding:githubstar"?: boolean;
         "onboarding:lastversion"?: string;
         count?: number;
+        "termdash:*"?: boolean;
+        "termdash:type"?: string;
+        "termdash:claudesessionid"?: string;
+        "termdash:resume"?: boolean;
+        "termdash:status"?: string;
+        "termdash:summary"?: string;
+        "termdash:archived"?: boolean;
+        "termdash:archivedat"?: number;
     };
 
     // tsgenmeta.MethodMeta

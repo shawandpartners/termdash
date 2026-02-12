@@ -150,6 +150,16 @@ type MetaTSType struct {
 	OnboardingLastVersion string `json:"onboarding:lastversion,omitempty"` // for client (tracks semver of last 'onboarding' shown)
 
 	Count int `json:"count,omitempty"` // temp for cpu plot. will remove later
+
+	// TermDash: Claude Code session management
+	TermDashClear          bool   `json:"termdash:*,omitempty"`
+	TermDashType           string `json:"termdash:type,omitempty"`           // "claude" or "" (shell)
+	TermDashClaudeSession  string `json:"termdash:claudesessionid,omitempty"` // UUID for Claude session tracking
+	TermDashResume         bool   `json:"termdash:resume,omitempty"`          // resume Claude session on start
+	TermDashStatus         string `json:"termdash:status,omitempty"`          // "active", "idle", "needs-input", "exited"
+	TermDashSummary        string `json:"termdash:summary,omitempty"`         // AI-generated session title
+	TermDashArchived       bool   `json:"termdash:archived,omitempty"`
+	TermDashArchivedAt     int64  `json:"termdash:archivedat,omitempty"`
 }
 
 type MetaDataDecl struct {

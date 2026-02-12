@@ -146,5 +146,14 @@ const (
 	MetaKey_OnboardingLastVersion            = "onboarding:lastversion"
 
 	MetaKey_Count                            = "count"
+
+	MetaKey_TermDashClear                    = "termdash:*"
+	MetaKey_TermDashType                     = "termdash:type"
+	MetaKey_TermDashClaudeSession            = "termdash:claudesessionid"
+	MetaKey_TermDashResume                   = "termdash:resume"
+	MetaKey_TermDashStatus                   = "termdash:status"
+	MetaKey_TermDashSummary                  = "termdash:summary"
+	MetaKey_TermDashArchived                 = "termdash:archived"
+	MetaKey_TermDashArchivedAt               = "termdash:archivedat"
 )
 
