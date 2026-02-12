@@ -18,6 +18,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/wavetermdev/waveterm/pkg/blocklogger"
+	"github.com/wavetermdev/waveterm/pkg/termdash"
 	"github.com/wavetermdev/waveterm/pkg/filestore"
 	"github.com/wavetermdev/waveterm/pkg/panichandler"
 	"github.com/wavetermdev/waveterm/pkg/remote"
@@ -66,6 +67,9 @@ type ShellController struct {
 	// for shell/cmd
 	ShellProc    *shellexec.ShellProc
 	ShellInputCh chan *BlockInputUnion
+
+	// termdash: Claude status tracking
+	StatusDetector *termdash.StatusDetector
 }
 
 // Constructor that returns the Controller interface
@@ -527,6 +531,14 @@ func (bc *ShellController) manageRunningShellProcess(shellProc *shellexec.ShellP
 	shellInputCh := make(chan *BlockInputUnion, 32)
 	bc.ShellInputCh = shellInputCh
 
+	// Initialize status detector for Claude blocks
+	isClaudeBlock := blockMeta.GetString(waveobj.MetaKey_TermDashType, "") == "claude"
+	if isClaudeBlock {
+		bc.StatusDetector = termdash.NewStatusDetector(func(oldStatus, newStatus string) {
+			bc.handleClaudeStatusChange(oldStatus, newStatus)
+		})
+	}
+
 	go func() {
 		// handles regular output from the pty (goes to the blockfile and xterm)
 		defer func() {
@@ -534,6 +546,11 @@ func (bc *ShellController) manageRunningShellProcess(shellProc *shellexec.ShellP
 		}()
 		defer func() {
 			log.Printf("[shellproc] pty-read loop done\n")
+			// Mark Claude session as exited
+			if bc.StatusDetector != nil {
+				bc.StatusDetector.SetExited()
+				bc.StatusDetector.Stop()
+			}
 			shellProc.Close()
 			bc.WithLock(func() {
 				// so no other events are sent
@@ -557,6 +574,10 @@ func (bc *ShellController) manageRunningShellProcess(shellProc *shellexec.ShellP
 				err := HandleAppendBlockFile(bc.BlockId, wavebase.BlockFile_Term, buf[:nr])
 				if err != nil {
 					log.Printf("error appending to blockfile: %v\n", err)
+				}
+				// Feed output to status detector for Claude blocks
+				if bc.StatusDetector != nil {
+					bc.StatusDetector.ProcessOutput(buf[:nr])
 				}
 			}
 			if err == io.EOF {
@@ -736,6 +757,13 @@ func createCmdStrAndOpts(blockId string, blockMeta waveobj.MetaMapType, connName
 	tdType := blockMeta.GetString(waveobj.MetaKey_TermDashType, "")
 	if tdType == "claude" {
 		cmdStr = buildClaudeCommand(blockId, blockMeta, cmdStr)
+		// Set initial status to active
+		initCtx, initCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer initCancel()
+		statusMeta := waveobj.MetaMapType{
+			waveobj.MetaKey_TermDashStatus: termdash.StatusActive,
+		}
+		wstore.UpdateObjectMeta(initCtx, waveobj.MakeORef(waveobj.OType_Block, blockId), statusMeta, false)
 	}
 
 	useShell := blockMeta.GetBool(waveobj.MetaKey_CmdShell, true)
@@ -779,6 +807,72 @@ func buildClaudeCommand(blockId string, blockMeta waveobj.MetaMapType, baseCmd s
 		wstore.DBUpdate(ctx, blockData)
 	}
 	return baseCmd + " --session-id " + newId
+}
+
+// handleClaudeStatusChange is called by the status detector when Claude's status changes.
+// It updates block metadata and publishes tab indicator events.
+func (bc *ShellController) handleClaudeStatusChange(oldStatus, newStatus string) {
+	log.Printf("[termdash] Claude status change: %s -> %s (block=%s)\n", oldStatus, newStatus, bc.BlockId)
+
+	// Update block metadata with new status
+	ctx, cancelFn := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancelFn()
+	metaUpdate := waveobj.MetaMapType{
+		waveobj.MetaKey_TermDashStatus: newStatus,
+	}
+	err := wstore.UpdateObjectMeta(ctx, waveobj.MakeORef(waveobj.OType_Block, bc.BlockId), metaUpdate, false)
+	if err != nil {
+		log.Printf("[termdash] error updating block status meta: %v\n", err)
+	}
+
+	// Publish tab indicator based on status
+	var indicator *wshrpc.TabIndicator
+	switch newStatus {
+	case termdash.StatusNeedsInput:
+		// Claude is waiting for input — show orange bell indicator, clear on focus
+		indicator = &wshrpc.TabIndicator{
+			Icon:         "bell",
+			Color:        "#f59e0b",
+			Priority:     2,
+			ClearOnFocus: true,
+			PersistentIndicator: &wshrpc.TabIndicator{
+				Icon:     "message-dots",
+				Color:    "#f59e0b",
+				Priority: 1,
+			},
+		}
+	case termdash.StatusActive:
+		// Claude is actively working — show green spinner indicator, persistent
+		indicator = &wshrpc.TabIndicator{
+			Icon:     "spinner",
+			Color:    "#22c55e",
+			Priority: 1,
+		}
+	case termdash.StatusIdle:
+		// Claude is idle — show gray pause icon, persistent
+		indicator = &wshrpc.TabIndicator{
+			Icon:     "pause",
+			Color:    "#6b7280",
+			Priority: 1,
+		}
+	case termdash.StatusExited:
+		// Claude process exited — show red circle-xmark, persistent
+		indicator = &wshrpc.TabIndicator{
+			Icon:     "circle-xmark",
+			Color:    "#ef4444",
+			Priority: 1,
+		}
+	}
+
+	eventData := wshrpc.TabIndicatorEventData{
+		TabId:     bc.TabId,
+		Indicator: indicator,
+	}
+	wps.Broker.Publish(wps.WaveEvent{
+		Event:  wps.Event_TabIndicator,
+		Scopes: []string{waveobj.MakeORef(waveobj.OType_Tab, bc.TabId).String()},
+		Data:   eventData,
+	})
 }
 
 func (bc *ShellController) getBlockData_noErr() *waveobj.Block {

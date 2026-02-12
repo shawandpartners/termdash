@@ -159,6 +159,39 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId }: HeaderEndI
 });
 HeaderEndIcons.displayName = "HeaderEndIcons";
 
+// Status indicator styles for Claude Code blocks
+const claudeStatusConfig: Record<string, { icon: string; color: string; label: string }> = {
+    active: { icon: "fa-solid fa-circle-notch fa-spin", color: "#22c55e", label: "Claude is working" },
+    "needs-input": { icon: "fa-solid fa-comment-dots", color: "#f59e0b", label: "Claude needs input" },
+    idle: { icon: "fa-solid fa-pause-circle", color: "#6b7280", label: "Claude is idle" },
+    exited: { icon: "fa-solid fa-circle-xmark", color: "#ef4444", label: "Claude session ended" },
+};
+
+const ClaudeStatusIndicator = React.memo(({ blockData }: { blockData: Block }) => {
+    const tdType = blockData?.meta?.["termdash:type"];
+    const status = blockData?.meta?.["termdash:status"];
+
+    if (tdType !== "claude" || !status) {
+        return null;
+    }
+
+    const config = claudeStatusConfig[status];
+    if (!config) {
+        return null;
+    }
+
+    return (
+        <div
+            className="claude-status-indicator"
+            title={config.label}
+            style={{ color: config.color, fontSize: "11px", display: "flex", alignItems: "center", gap: "4px", marginLeft: "4px", opacity: 0.9 }}
+        >
+            <i className={config.icon} />
+        </div>
+    );
+});
+ClaudeStatusIndicator.displayName = "ClaudeStatusIndicator";
+
 const BlockFrame_Header = ({
     nodeModel,
     viewModel,
@@ -220,6 +253,7 @@ const BlockFrame_Header = ({
             {useTermHeader && termConfigedDurable != null && (
                 <DurableSessionFlyover key="durable-status" blockId={nodeModel.blockId} viewModel={viewModel} placement="bottom" divClassName="iconbutton disabled text-[13px] ml-[-4px]" />
             )}
+            <ClaudeStatusIndicator blockData={blockData} />
             <HeaderTextElems viewModel={viewModel} blockData={blockData} preview={preview} error={error} />
             <HeaderEndIcons viewModel={viewModel} nodeModel={nodeModel} blockId={nodeModel.blockId} />
         </div>

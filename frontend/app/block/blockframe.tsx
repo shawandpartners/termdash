@@ -58,6 +58,22 @@ const BlockMask = React.memo(({ nodeModel }: { nodeModel: NodeModel }) => {
         style.borderColor = "rgb(59, 130, 246)";
     }
 
+    // TermDash: Dynamic border color for Claude blocks based on status
+    const tdType = blockData?.meta?.["termdash:type"];
+    const tdStatus = blockData?.meta?.["termdash:status"];
+    if (tdType === "claude" && tdStatus) {
+        const statusBorderColors: Record<string, string> = {
+            active: "#22c55e",
+            "needs-input": "#f59e0b",
+            idle: "#3d2d5c",
+            exited: "#ef4444",
+        };
+        const statusColor = statusBorderColors[tdStatus];
+        if (statusColor && !isFocused) {
+            style.borderColor = statusColor;
+        }
+    }
+
     let innerElem = null;
     if (isLayoutMode && showOverlayBlockNums) {
         showBlockMask = true;
