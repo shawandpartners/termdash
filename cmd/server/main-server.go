@@ -26,6 +26,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/remote/fileshare/wshfs"
 	"github.com/wavetermdev/waveterm/pkg/secretstore"
 	"github.com/wavetermdev/waveterm/pkg/service"
+	"github.com/wavetermdev/waveterm/pkg/service/termdashservice"
 	"github.com/wavetermdev/waveterm/pkg/telemetry"
 	"github.com/wavetermdev/waveterm/pkg/telemetry/telemetrydata"
 	"github.com/wavetermdev/waveterm/pkg/util/envutil"
@@ -572,6 +573,7 @@ func main() {
 	jobcontroller.InitJobController()
 	blockcontroller.InitBlockController()
 	wcore.InitTabIndicatorStore()
+	termdashservice.StartSummaryLoop()
 	go func() {
 		defer func() {
 			panichandler.PanicHandler("GetSystemSummary", recover())

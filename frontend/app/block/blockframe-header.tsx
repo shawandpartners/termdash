@@ -213,6 +213,10 @@ const BlockFrame_Header = ({
     const dragHandleRef = preview ? null : nodeModel.dragHandleRef;
     const isTerminalBlock = blockData?.meta?.view === "term";
     viewName = blockData?.meta?.["frame:title"] ?? viewName;
+    // TermDash: Use AI-generated summary as the block title for Claude sessions
+    if (blockData?.meta?.["termdash:type"] === "claude" && blockData?.meta?.["termdash:summary"]) {
+        viewName = blockData.meta["termdash:summary"];
+    }
     viewIconUnion = blockData?.meta?.["frame:icon"] ?? viewIconUnion;
 
     React.useEffect(() => {
