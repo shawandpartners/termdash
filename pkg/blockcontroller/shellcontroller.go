@@ -823,7 +823,62 @@ func buildClaudeCommand(blockId string, blockMeta waveobj.MetaMapType, baseCmd s
 		blockData.Meta[waveobj.MetaKey_TermDashClaudeSession] = newId
 		wstore.DBUpdate(ctx, blockData)
 	}
-	return baseCmd + " --session-id " + newId
+
+	cmdStr := baseCmd + " --session-id " + newId
+
+	// Inject learnings from previous sessions as system context
+	learningsCtx := buildLearningsContext(ctx)
+	if learningsCtx != "" {
+		cmdStr += " --append-system-prompt " + utilfn.ShellQuote(learningsCtx, false, -1)
+	}
+
+	return cmdStr
+}
+
+// buildLearningsContext gathers relevant learnings from previous Claude sessions.
+func buildLearningsContext(ctx context.Context) string {
+	blocks, err := wstore.DBGetAllObjsByType[*waveobj.Block](ctx, waveobj.OType_Block)
+	if err != nil {
+		return ""
+	}
+
+	var learnings []string
+	seen := make(map[string]bool)
+
+	for _, block := range blocks {
+		if block.Meta.GetString(waveobj.MetaKey_TermDashType, "") != "claude" {
+			continue
+		}
+		_, data, err := filestore.WFS.ReadFile(ctx, block.OID, "termdash:learnings")
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+			line = strings.TrimSpace(line)
+			if line != "" && !seen[strings.ToLower(line)] {
+				seen[strings.ToLower(line)] = true
+				learnings = append(learnings, line)
+			}
+		}
+	}
+
+	if len(learnings) == 0 {
+		return ""
+	}
+
+	// Limit to 10 most recent learnings
+	if len(learnings) > 10 {
+		learnings = learnings[len(learnings)-10:]
+	}
+
+	var sb strings.Builder
+	sb.WriteString("Engineering insights from previous sessions:\n")
+	for _, l := range learnings {
+		sb.WriteString("- ")
+		sb.WriteString(l)
+		sb.WriteString("\n")
+	}
+	return sb.String()
 }
 
 // handleClaudeStatusChange is called by the status detector when Claude's status changes.
