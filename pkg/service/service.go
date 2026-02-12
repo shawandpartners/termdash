@@ -12,6 +12,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/service/blockservice"
 	"github.com/wavetermdev/waveterm/pkg/service/clientservice"
 	"github.com/wavetermdev/waveterm/pkg/service/objectservice"
+	"github.com/wavetermdev/waveterm/pkg/service/termdashservice"
 	"github.com/wavetermdev/waveterm/pkg/service/userinputservice"
 	"github.com/wavetermdev/waveterm/pkg/service/windowservice"
 	"github.com/wavetermdev/waveterm/pkg/service/workspaceservice"
@@ -28,6 +29,7 @@ var ServiceMap = map[string]any{
 	"window":    &windowservice.WindowService{},
 	"workspace": &workspaceservice.WorkspaceService{},
 	"userinput": &userinputservice.UserInputService{},
+	"termdash":  &termdashservice.TermDashService{},
 }
 
 var contextRType = reflect.TypeOf((*context.Context)(nil)).Elem()

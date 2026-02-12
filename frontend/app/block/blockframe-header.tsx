@@ -14,6 +14,7 @@ import { ContextMenuModel } from "@/app/store/contextmenu";
 import { getConnStatusAtom, recordTEvent, WOS } from "@/app/store/global";
 import { globalStore } from "@/app/store/jotaiStore";
 import { uxCloseBlock } from "@/app/store/keymodel";
+import { ObjectService } from "@/app/store/services";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { IconButton } from "@/element/iconbutton";
@@ -48,6 +49,51 @@ function handleHeaderContextMenu(
             },
         },
     ];
+
+    // TermDash: Add Claude-specific context menu items
+    const blockOref = WOS.makeORef("block", blockId);
+    const blockData = globalStore.get(WOS.getWaveObjectAtom<Block>(blockOref));
+    if (blockData?.meta?.["termdash:type"] === "claude") {
+        menu.push({ type: "separator" });
+        const isArchived = blockData?.meta?.["termdash:archived"];
+        const sessionId = blockData?.meta?.["termdash:claudesessionid"];
+
+        if (!isArchived) {
+            menu.push({
+                label: "Archive Session",
+                click: () => {
+                    util.fireAndForget(async () => {
+                        await ObjectService.UpdateObjectMeta(blockOref, {
+                            "termdash:archived": true,
+                            "termdash:archivedat": Date.now(),
+                        });
+                    });
+                },
+            });
+        } else {
+            menu.push({
+                label: "Unarchive Session",
+                click: () => {
+                    util.fireAndForget(async () => {
+                        await ObjectService.UpdateObjectMeta(blockOref, {
+                            "termdash:archived": false,
+                            "termdash:archivedat": null,
+                        });
+                    });
+                },
+            });
+        }
+
+        if (sessionId) {
+            menu.push({
+                label: "Copy Session ID",
+                click: () => {
+                    navigator.clipboard.writeText(sessionId);
+                },
+            });
+        }
+    }
+
     const extraItems = viewModel?.getSettingsMenuItems?.();
     if (extraItems && extraItems.length > 0) menu.push({ type: "separator" }, ...extraItems);
     menu.push(
