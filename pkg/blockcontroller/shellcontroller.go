@@ -68,8 +68,9 @@ type ShellController struct {
 	ShellProc    *shellexec.ShellProc
 	ShellInputCh chan *BlockInputUnion
 
-	// termdash: Claude status tracking
-	StatusDetector *termdash.StatusDetector
+	// termdash: Claude status tracking and transcript recording
+	StatusDetector      *termdash.StatusDetector
+	TranscriptRecorder  *termdash.TranscriptRecorder
 }
 
 // Constructor that returns the Controller interface
@@ -531,11 +532,17 @@ func (bc *ShellController) manageRunningShellProcess(shellProc *shellexec.ShellP
 	shellInputCh := make(chan *BlockInputUnion, 32)
 	bc.ShellInputCh = shellInputCh
 
-	// Initialize status detector for Claude blocks
+	// Initialize status detector and transcript recorder for Claude blocks
 	isClaudeBlock := blockMeta.GetString(waveobj.MetaKey_TermDashType, "") == "claude"
 	if isClaudeBlock {
 		bc.StatusDetector = termdash.NewStatusDetector(func(oldStatus, newStatus string) {
 			bc.handleClaudeStatusChange(oldStatus, newStatus)
+		})
+		bc.TranscriptRecorder = termdash.NewTranscriptRecorder(func(data []byte) {
+			err := HandleAppendBlockFile(bc.BlockId, "termdash:transcript", data)
+			if err != nil {
+				log.Printf("[termdash] error appending transcript: %v\n", err)
+			}
 		})
 	}
 
@@ -546,10 +553,13 @@ func (bc *ShellController) manageRunningShellProcess(shellProc *shellexec.ShellP
 		}()
 		defer func() {
 			log.Printf("[shellproc] pty-read loop done\n")
-			// Mark Claude session as exited
+			// Mark Claude session as exited and stop transcript
 			if bc.StatusDetector != nil {
 				bc.StatusDetector.SetExited()
 				bc.StatusDetector.Stop()
+			}
+			if bc.TranscriptRecorder != nil {
+				bc.TranscriptRecorder.Stop()
 			}
 			shellProc.Close()
 			bc.WithLock(func() {
@@ -575,9 +585,12 @@ func (bc *ShellController) manageRunningShellProcess(shellProc *shellexec.ShellP
 				if err != nil {
 					log.Printf("error appending to blockfile: %v\n", err)
 				}
-				// Feed output to status detector for Claude blocks
+				// Feed output to status detector and transcript for Claude blocks
 				if bc.StatusDetector != nil {
 					bc.StatusDetector.ProcessOutput(buf[:nr])
+				}
+				if bc.TranscriptRecorder != nil {
+					bc.TranscriptRecorder.RecordOutput(buf[:nr])
 				}
 			}
 			if err == io.EOF {
@@ -598,6 +611,10 @@ func (bc *ShellController) manageRunningShellProcess(shellProc *shellexec.ShellP
 		for ic := range shellInputCh {
 			if len(ic.InputData) > 0 {
 				shellProc.Cmd.Write(ic.InputData)
+				// Record user input for transcript
+				if bc.TranscriptRecorder != nil {
+					bc.TranscriptRecorder.RecordInput(ic.InputData)
+				}
 			}
 			if ic.TermSize != nil {
 				updateTermSize(shellProc, bc.BlockId, *ic.TermSize)
